@@ -12,17 +12,15 @@ Slack pinned message.
 
 ## What ships here
 
-```
-.
 ├── api/
-│   ├── main.py                      vendored M10 surface; TODO: middleware wires + /metrics mount
-│   ├── observability.py             TODO: metric declarations + middlewares
-│   ├── models.py                    vendored M10 Pydantic models (reference)
-│   ├── rag.py                       vendored M10 RAG composer (reference)
-│   ├── kg.py                        vendored M10 KG mapper wrapper (reference)
-│   ├── ner.py                       vendored M10 NER wrapper (reference)
-│   ├── Dockerfile                   vendored M10 backend Dockerfile
-│   └── __init__.py
+│   ├── main.py                     vendored M10 surface; TODO: middleware wires + /metrics mount
+│   ├── observability.py            TODO: metric declarations + middlewares
+│   ├── models.py                   vendored M10 Pydantic models (reference)
+│   ├── rag.py                      vendored M10 RAG composer (reference)
+│   ├── kg.py                       vendored M10 KG mapper wrapper (reference)
+│   ├── ner.py                      vendored M10 NER wrapper (reference)
+│   ├── Dockerfile                  vendored M10 backend Dockerfile
+│   └── init.py
 ├── web/                             vendored M10 Next.js client (not graded this module)
 ├── eval_rag_smoke.py                TODO: 3-question smoke evaluator
 ├── data/
@@ -42,7 +40,6 @@ Slack pinned message.
 ├── .gitignore
 ├── LICENSE
 └── README.md
-```
 
 ## Setup
 
@@ -55,63 +52,54 @@ source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 python -m spacy download en_core_web_sm
 cp .env.example .env
-```
 
-The `spacy download` step is needed only if you plan to run `uvicorn` directly on your host (for example, to debug). The Docker image installs the model from a pinned wheel, so `docker compose up -d` does not need this step. Without the model, `/extract` silently returns a stub.
+The spacy download step is needed only if you plan to run uvicorn directly on your host (for example, to debug). The Docker image installs the model from a pinned wheel, so docker compose up -d does not need this step. Without the model, /extract silently returns a stub.
 
-The `lab-11-service-monitoring` branch is what the autograder workflow runs against and what you push your PR from.
+The lab-11-service-monitoring branch is what the autograder workflow runs against and what you push your PR from.
 
-Edit `.env` to set your Neo4j password and Weaviate URL (the values from
+Edit .env to set your Neo4j password and Weaviate URL (the values from
 your Module 10 deliverable).
 
-## Bring up the M10 stack
-
-```bash
+Bring up the M10 stack
+Bash
 docker compose up -d
-curl http://localhost:8000/readyz
-```
 
-A 200 means `api` is up and connected to Neo4j + Weaviate; if you see
+curl http://localhost:8000/readyz
+A 200 means api is up and connected to Neo4j + Weaviate; if you see
 anything else, give the stack 60 seconds for cold starts and try again
 before debugging.
 
 Seed the stores (idempotent):
 
-```bash
+Bash
 bash seed_neo4j.sh
 bash seed_weaviate.sh
-```
-
-## Run the autograder locally
-
-```bash
+Run the autograder locally
+Bash
 pytest tests/ -v
-```
-
 On the unmodified starter, the autograder will FAIL (by design — your TODOs
-are unimplemented). Implement `api/observability.py`, wire the three
-middlewares + mount `/metrics` in `api/main.py`, and implement
-`eval_rag_smoke.py`; then re-run.
+are unimplemented). Implement api/observability.py, wire the three
+middlewares + mount /metrics in api/main.py, and implement
+eval_rag_smoke.py; then re-run.
 
-## Tear down
-
-```bash
+Tear down
+Bash
 docker compose down -v
-```
-
-## Submission
-
+Submission
 Open a PR within your fork. The PR description must include:
 
-1. Confirmation that `docker compose up -d` brings up the stack and `/readyz` returns 200.
-2. Confirmation that `python eval_rag_smoke.py` exits 0.
-3. A short paragraph (~100 words) describing one design decision you made.
-4. Paste your PR URL into TalentLMS → Module 11 → Lab 11 to submit this assignment.
+Confirmation that docker compose up -d brings up the stack and /readyz returns 200.
 
----
+Confirmation that python eval_rag_smoke.py exits 0.
 
-## License
+A short paragraph (~100 words) describing one design decision you made.
 
-This repository is provided for educational use only. See [LICENSE](LICENSE) for terms.
+Paste your PR URL into TalentLMS → Module 11 → Lab 11 to submit this assignment.
+
+Observability
+This project implements an instrumentation layer that exposes three primary Prometheus metric families at module scope: requests_total (a Counter tracking request volume by path and HTTP status), request_latency_seconds (a Histogram tracking endpoint latency using default Prometheus latency buckets to measure response distribution), and inflight_requests (a Gauge monitoring concurrent active requests). To verify and read these metrics locally, you can scrape the newly mounted endpoint by running curl http://localhost:8000/metrics, which exposes a plaintext format documenting the # HELP and # TYPE definitions along with the live telemetry of the runtime services.
+
+License
+This repository is provided for educational use only. See LICENSE for terms.
 
 You may clone and modify this repository for personal learning and practice, and reference code you wrote here in your professional portfolio. Redistribution outside this course is not permitted.

@@ -1,37 +1,53 @@
 """YOUR tests for the observability layer.
 
 Per the lab guide, write at least 3 substantive tests, each with at least
-1 assertion. The autograder enforces only the structure (3+ test functions,
-each with an `assert` and a non-stub body); the specific behaviors you
-choose to verify are up to you.
-
-You name the tests, you decide what to assert, you choose the test
-strategy (TestClient + header inspection? caplog + log parsing?
-/metrics scrape + counter delta?). The placeholders below show one
-possible split (one test per middleware), but you are free to pick any
-three behaviors that exercise meaningful properties of your
-instrumentation -- e.g. test that the request-id flows across two
-sequential requests with distinct ids, test that the metrics counter
-reflects a 500 response status correctly, test that the structured log
-line carries the X-Request-ID matching the response header.
-
-The autograder does not import your test function names; rename them
-freely.
+1 assertion.
 """
 
+import json
+import logging
 import pytest
+from fastapi.testclient import TestClient
+
+from api.main import app
+from api.observability import requests_total
+
+client = TestClient(app)
 
 
-def test_one():
-    # TODO: write a meaningful test of your observability layer here.
-    pytest.fail("Not implemented -- write your test here")
+def test_request_id_header_present():
+    response = client.get("/healthz")
+    
+    assert "X-Request-ID" in response.headers
+    assert len(response.headers["X-Request-ID"]) >= 8
 
 
-def test_two():
-    # TODO: write a meaningful test of your observability layer here.
-    pytest.fail("Not implemented -- write your test here")
+def test_metrics_counter_increments():
+    path = "/healthz"
+    status_code = "200"
+    
+    try:
+        before_value = requests_total.labels(path=path, status=status_code)._value.get()
+    except Exception:
+        before_value = 0
+
+    client.get(path)
+
+    after_value = requests_total.labels(path=path, status=status_code)._value.get()
+    
+    assert after_value == before_value + 1
 
 
-def test_three():
-    # TODO: write a meaningful test of your observability layer here.
-    pytest.fail("Not implemented -- write your test here")
+def test_structured_log_matches_header(caplog):
+    with caplog.at_level(logging.INFO, logger="m11.api"):
+        response = client.get("/healthz")
+        
+        header_request_id = response.headers.get("X-Request-ID")
+        
+        assert len(caplog.records) >= 1
+        
+        log_line = caplog.records[-1].message
+        log_json = json.loads(log_line)
+        
+        assert "request_id" in log_json
+        assert log_json["request_id"] == header_request_id

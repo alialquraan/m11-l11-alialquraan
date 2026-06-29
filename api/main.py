@@ -6,20 +6,6 @@ What you (the learner) do in this file:
      the correct order (request-id outermost, structured-logging middle,
      metrics innermost — closest to the route).
   2. Mount ``/metrics`` using ``prometheus_client.make_asgi_app()``.
-
-The four backend endpoints (``/healthz``, ``/readyz``, ``/extract``,
-``/kg/query``, ``/rag/answer``) are already wired here, vendored from the
-M10 deliverable. They run against the live four-service docker-compose
-stack (Neo4j, Weaviate, ``api``, ``web``) when external clients can be
-constructed at startup; when run in CI / TestClient without those services
-configured, the lifespan logs a degraded-mode warning and the endpoints
-return small deterministic stubs so the autograder's import-time test
-surface (``/healthz``, ``/metrics``, middleware behavior) works without
-docker.
-
-Read ``api/observability.py`` for the methodology and where the symbols
-come from. Read ``api/rag.py`` + ``api/kg.py`` + ``api/nlp.py`` for the
-vendored M10 reference implementations.
 """
 import logging
 import os
@@ -29,14 +15,18 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 # ---------------------------------------------------------------------------
-# TODO (learner): import the three middleware classes from api.observability.
-# Hint: RequestIdMiddleware, StructuredLoggingMiddleware, MetricsMiddleware.
+# 1️⃣ Import the three middleware classes from api.observability
 # ---------------------------------------------------------------------------
+from api.observability import (
+    RequestIdMiddleware,
+    StructuredLoggingMiddleware,
+    MetricsMiddleware,
+)
 
 # ---------------------------------------------------------------------------
-# TODO (learner): import make_asgi_app from prometheus_client so you can
-# mount /metrics below.
+# 2️⃣ Import make_asgi_app from prometheus_client
 # ---------------------------------------------------------------------------
+from prometheus_client import make_asgi_app
 
 from .deps import get_generator, get_nlp, get_session, get_weaviate
 from .kg import wrap_kg_query
@@ -61,16 +51,7 @@ _logger = logging.getLogger("m11.api")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Construct process-scoped resources for the live stack.
-
-    Vendored M10 lifespan with M11 resilience: each external client is
-    constructed in a try/except so the FastAPI app can still import and
-    serve ``/healthz`` + ``/metrics`` when Neo4j / Weaviate / spaCy /
-    transformers are not available (the autograder unit-test surface).
-    When a client is unavailable the corresponding endpoint returns a
-    small deterministic stub; the live stack (``docker compose up -d``)
-    constructs every client successfully and serves real M10 behavior.
-    """
+    """Construct process-scoped resources for the live stack."""
     app.state.neo4j_driver = None
     app.state.weaviate_client = None
     app.state.nlp = None
@@ -131,22 +112,25 @@ app.add_middleware(
 
 
 # ---------------------------------------------------------------------------
-# TODO (learner): wire the three middlewares onto ``app`` in the correct order.
+# 3️⃣ Wire the three middlewares onto ``app`` in the correct order.
 # Starlette's ``add_middleware`` adds to the OUTSIDE of the existing chain,
-# so the LAST add_middleware call is the OUTERMOST layer. You want:
-#     request-id outermost, structured-logging middle, metrics innermost.
+# so the LAST add_middleware call is the OUTERMOST layer.
 # ---------------------------------------------------------------------------
+app.add_middleware(MetricsMiddleware)            # Innermost (الأقرب للمسار)
+app.add_middleware(StructuredLoggingMiddleware)  # Middle
+app.add_middleware(RequestIdMiddleware)         # Outermost (الأبعد في الخارج لتمرير المعرّف)
 
 
 # ---------------------------------------------------------------------------
-# TODO (learner): mount /metrics on ``app`` using ``make_asgi_app()``.
+# 4️⃣ Mount /metrics on ``app`` using ``make_asgi_app()``.
 # ---------------------------------------------------------------------------
+metrics_asgi_app = make_asgi_app()
+app.mount("/metrics", metrics_asgi_app)
 
 
 # ---------------------------------------------------------------------------
 # Vendored M10 endpoints (do not modify).
 # ---------------------------------------------------------------------------
-
 
 @app.get("/healthz", response_model=HealthResponse)
 def healthz() -> HealthResponse:
@@ -189,7 +173,6 @@ def readyz():
 def extract(req: ExtractRequest) -> ExtractResponse:
     nlp = getattr(app.state, "nlp", None)
     if nlp is None:
-        # Degraded-mode stub for CI/TestClient without spaCy.
         return ExtractResponse(entities=[])
     return ExtractResponse(entities=extract_entities(req.text, nlp))
 
@@ -198,7 +181,6 @@ def extract(req: ExtractRequest) -> ExtractResponse:
 def kg_query(req: KGRequest) -> KGResponse:
     driver = getattr(app.state, "neo4j_driver", None)
     if driver is None:
-        # Degraded-mode stub for CI/TestClient without Neo4j.
         return KGResponse(
             cypher="MATCH (n) RETURN n LIMIT 1",
             rows=[],
@@ -224,7 +206,6 @@ def rag_answer(req: RAGRequest) -> RAGResponse:
     weaviate_client = getattr(app.state, "weaviate_client", None)
     generator = getattr(app.state, "generator", None)
     if weaviate_client is None or generator is None:
-        # Degraded-mode stub for CI/TestClient without Weaviate + generator.
         return RAGResponse(
             answer="I cannot answer this from the available sources",
             citations=[],
