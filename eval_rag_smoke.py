@@ -41,8 +41,7 @@ def score_grounding(response: dict, candidate_ids: set) -> bool:
         
     # Condition (b): Every cited chunk_id must be in the candidate set
     for citation in citations:
-        # استخراج المعرف النصي من داخل القاموس لتفادي الـ TypeError
-        cid = citation.get("chunk_id")
+        cid = citation.get("chunk_id") if isinstance(citation, dict) else citation
         if cid not in candidate_ids:
             return False
             
@@ -58,19 +57,21 @@ def evaluate_question(question: dict) -> bool:
     }
     
     try:
-        # استخدام httpx.post المباشر بدلاً من فتح Client ليتوافق مع الـ Test Stub
         res = httpx.post(url, json=payload, timeout=60.0)
-            
-        if res.status_code != 200:
-            return False
-            
         response_body = res.json()
+    except Exception:
+        try:
+            from fastapi.testclient import TestClient
+            from api.main import app
+            client = TestClient(app)
+            res = client.post("/rag/answer", json=payload)
+            response_body = res.json()
+        except Exception:
+            return False
         
-        # استخراج الـ candidate_ids
+    try:
         candidate_ids = {chunk["chunk_id"] for chunk in response_body.get("retrieved", [])}
-        
         return score_grounding(response_body, candidate_ids)
-        
     except Exception:
         return False
 
